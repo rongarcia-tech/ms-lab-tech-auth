@@ -3,6 +3,8 @@ package cl.duoc.ms_auth.servicios.impl;
 import cl.duoc.ms_auth.dtos.RoleResponse;
 import cl.duoc.ms_auth.repositorio.RoleRepository;
 import cl.duoc.ms_auth.servicios.RoleService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -15,6 +17,7 @@ import java.util.List;
 public class RoleServiceImpl implements RoleService {
 
     private final RoleRepository roleRepo;
+    private static final Logger logger = LoggerFactory.getLogger(RoleServiceImpl.class);
 
     /**
      * Constructor para inyectar el repositorio de roles.
@@ -33,8 +36,11 @@ public class RoleServiceImpl implements RoleService {
      */
     @Override
     public List<RoleResponse> list() {
-        return roleRepo.findAll().stream()
+        logger.info("Obteniendo todos los roles.");
+        List<RoleResponse> roles = roleRepo.findAll().stream()
                 .map(r -> new RoleResponse(r.getId(), r.getName(), r.getDescription()))
                 .toList();
+        logger.debug("Se encontraron {} roles.", roles.size());
+        return roles;
     }
 }

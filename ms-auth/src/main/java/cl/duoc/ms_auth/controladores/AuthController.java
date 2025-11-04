@@ -4,6 +4,8 @@ import cl.duoc.ms_auth.dtos.AuthLoginRequest;
 import cl.duoc.ms_auth.dtos.AuthLoginResponse;
 import cl.duoc.ms_auth.servicios.AuthService;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private static final Logger logger = LoggerFactory.getLogger(AuthController.class);
 
     /**
      * Constructor para inyectar el servicio de autenticación.
@@ -35,6 +38,9 @@ public class AuthController {
      */
     @PostMapping("/login")
     public ResponseEntity<AuthLoginResponse> login(@RequestBody @Valid AuthLoginRequest request) {
-        return ResponseEntity.ok(authService.login(request));
+        logger.info("Iniciando proceso de login para el usuario: {}", request.username());
+        AuthLoginResponse response = authService.login(request);
+        logger.info("Login exitoso para el usuario: {}", request.username());
+        return ResponseEntity.ok(response);
     }
 }

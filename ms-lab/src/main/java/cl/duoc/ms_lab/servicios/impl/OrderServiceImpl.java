@@ -14,6 +14,8 @@ import cl.duoc.ms_lab.repositorio.LaboratoryRepository;
 import cl.duoc.ms_lab.repositorio.OrderRepository;
 import cl.duoc.ms_lab.security.SecurityUtils;
 import cl.duoc.ms_lab.servicios.OrderService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -26,6 +28,7 @@ public class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepo;
     private final LaboratoryRepository labRepo;
+    private static final Logger logger = LoggerFactory.getLogger(OrderServiceImpl.class);
 
     public OrderServiceImpl(OrderRepository orderRepo, LaboratoryRepository labRepo) {
         this.orderRepo = orderRepo;
@@ -34,12 +37,14 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public OrderResponse create(OrderCreateRequest req) {
+        logger.info("Creando orden para el paciente: {}", req.patientId());
         Order o = new Order();
         o.setPatientId(req.patientId());
         o.setRequestedTest(req.requestedTest());
         o.setStatus(OrderStatus.CREATED);
 
         if (req.labCode() != null && !req.labCode().isBlank()) {
+            logger.debug("Asignando laboratorio con código: {} a la nueva orden", req.labCode());
             Laboratory lab = labRepo.findByCode(req.labCode())
                     .orElseThrow(() -> new NotFoundException("Lab not found code=" + req.labCode()));
             o.setLaboratory(lab);
@@ -48,21 +53,20 @@ public class OrderServiceImpl implements OrderService {
         }
 
         o = orderRepo.save(o);
+        logger.debug("Orden creada con ID: {}", o.getId());
         return LabOrderMapper.toResponse(o);
     }
 
     @Override
     public OrderResponse assign(Long orderId, AssignOrderRequest req) {
+        logger.info("Asignando orden con ID: {} al laboratorio: {}", orderId, req.labCode());
         Order o = orderRepo.findById(orderId)
                 .orElseThrow(() -> new NotFoundException("Order not found id=" + orderId));
-        System.out.println("PASO1");
-        // Solo ADMIN llega aquí por regla del SecurityConfig,
-        // pero de todos modos podríamos validar con SecurityUtils.hasRole("ADMIN") si quieres.
 
         Laboratory lab = labRepo.findByCode(req.labCode())
                 .orElseThrow(() -> new NotFoundException("Lab not found code=" + req.labCode()));
-        System.out.println("PASO2");
         if (o.getStatus() == OrderStatus.FINISHED) {
+            logger.warn("No se puede asignar una orden finalizada (ID: {})", orderId);
             throw new BadRequestException("Cannot assign a FINISHED order");
         }
 
@@ -71,99 +75,102 @@ public class OrderServiceImpl implements OrderService {
         o.setAssignedAt(LocalDateTime.now());
 
         o = orderRepo.save(o);
+        logger.debug("Orden con ID: {} asignada correctamente", o.getId());
         return LabOrderMapper.toResponse(o);
     }
 
     @Override
     public OrderResponse advanceToInProgress(Long orderId) {
+        logger.info("Avanzando la orden con ID: {} a EN PROGRESO", orderId);
         Order o = orderRepo.findById(orderId)
                 .orElseThrow(() -> new NotFoundException("Order not found id=" + orderId));
 
         if (o.getStatus() != OrderStatus.ASSIGNED) {
+            logger.warn("Solo las órdenes ASIGNADAS pueden pasar a EN PROGRESO (ID de orden: {})", orderId);
             throw new BadRequestException("Only ASSIGNED orders can move to IN_PROGRESS");
         }
         o.setStatus(OrderStatus.IN_PROGRESS);
         o = orderRepo.save(o);
+        logger.debug("Orden con ID: {} ahora está EN PROGRESO", o.getId());
         return LabOrderMapper.toResponse(o);
     }
 
     @Override
     public OrderResponse finish(Long orderId) {
+        logger.info("Finalizando orden con ID: {}", orderId);
         Order o = orderRepo.findById(orderId)
                 .orElseThrow(() -> new NotFoundException("Order not found id=" + orderId));
 
         if (o.getStatus() != OrderStatus.IN_PROGRESS) {
+            logger.warn("Solo las órdenes EN PROGRESO pueden pasar a FINALIZADO (ID de orden: {})", orderId);
             throw new BadRequestException("Only IN_PROGRESS orders can move to FINISHED");
         }
         o.setStatus(OrderStatus.FINISHED);
         o = orderRepo.save(o);
+        logger.debug("Orden con ID: {} FINALIZADA", o.getId());
         return LabOrderMapper.toResponse(o);
     }
 
     @Override
     @Transactional(readOnly = true)
     public OrderResponse getById(Long id) {
+        logger.info("Buscando orden con ID: {}", id);
         Order o = orderRepo.findById(id)
                 .orElseThrow(() -> new NotFoundException("Order not found id=" + id));
 
-        // Si es LAB_TECH, debe pertenecer a su labCode
         if (!SecurityUtils.hasRole("ADMIN")) {
             var ju = SecurityUtils.currentUserOrNull();
             String labCodeFromToken = ju != null ? ju.labCode() : null;
             String orderLabCode = (o.getLaboratory() != null) ? o.getLaboratory().getCode() : null;
 
             if (labCodeFromToken == null || orderLabCode == null || !labCodeFromToken.equals(orderLabCode)) {
+                logger.warn("Acceso denegado: La orden {} no pertenece al laboratorio del usuario ({})", id, labCodeFromToken);
                 throw new ForbiddenException("Order does not belong to your lab");
             }
         }
 
+        logger.debug("Orden encontrada con ID: {}", o.getId());
         return LabOrderMapper.toResponse(o);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<OrderResponse> list(OrderStatus status, String labCode, String patientId, Pageable pageable) {
-        // ADMIN: puede ver todo (aplica filtros si vienen)
+        logger.info("Listando órdenes con estado: {}, código de laboratorio: {} y ID de paciente: {}", status, labCode, patientId);
+        Page<Order> page;
         if (SecurityUtils.hasRole("ADMIN")) {
+            logger.debug("El usuario es ADMIN, puede ver todas las órdenes");
             if (patientId != null && !patientId.isBlank()) {
-                return orderRepo.findByPatientId(patientId, pageable).map(LabOrderMapper::toResponse);
+                page = orderRepo.findByPatientId(patientId, pageable);
+            } else if (status != null && labCode != null && !labCode.isBlank()) {
+                Long labId = labRepo.findByCode(labCode).map(Laboratory::getId).orElse(-1L);
+                page = orderRepo.findByStatusAndLaboratory_Id(status, labId, pageable);
+            } else if (status != null) {
+                page = orderRepo.findByStatus(status, pageable);
+            } else if (labCode != null && !labCode.isBlank()) {
+                Long labId = labRepo.findByCode(labCode).map(Laboratory::getId).orElse(-1L);
+                page = orderRepo.findByLaboratory_Id(labId, pageable);
+            } else {
+                page = orderRepo.findAll(pageable);
             }
-            if (status != null && labCode != null && !labCode.isBlank()) {
-                Long labId = labRepo.findByCode(labCode)
-                        .map(Laboratory::getId)
-                        .orElse(-1L);
-                return orderRepo.findByStatusAndLaboratory_Id(status, labId, pageable).map(LabOrderMapper::toResponse);
-            }
-            if (status != null) {
-                return orderRepo.findByStatus(status, pageable).map(LabOrderMapper::toResponse);
-            }
-            if (labCode != null && !labCode.isBlank()) {
-                Long labId = labRepo.findByCode(labCode)
-                        .map(Laboratory::getId)
-                        .orElse(-1L);
-                return orderRepo.findByLaboratory_Id(labId, pageable).map(LabOrderMapper::toResponse);
-            }
-            return orderRepo.findAll(pageable).map(LabOrderMapper::toResponse);
-        }
+        } else {
+            var ju = SecurityUtils.currentUserOrNull();
+            String labCodeFromToken = ju != null ? ju.labCode() : null;
+            if (labCodeFromToken == null || labCodeFromToken.isBlank())
+                throw new ForbiddenException("Missing labCode in token");
 
-        // LAB_TECH: ignora labCode del request; fuerza el del token
-        var ju = SecurityUtils.currentUserOrNull();
-        String labCodeFromToken = ju != null ? ju.labCode() : null;
-        if (labCodeFromToken == null || labCodeFromToken.isBlank())
-            throw new ForbiddenException("Missing labCode in token");
+            logger.debug("El usuario es LAB_TECH, forzando el código de laboratorio del token: {}", labCodeFromToken);
+            Long labId = labRepo.findByCode(labCodeFromToken).map(Laboratory::getId).orElse(-1L);
 
-        Long labId = labRepo.findByCode(labCodeFromToken)
-                .map(Laboratory::getId)
-                .orElse(-1L);
-
-        if (patientId != null && !patientId.isBlank()) {
-            // regla: solo de su lab; si quisieras combinar lab + patient, crea query compuesta
-            return orderRepo.findByLaboratory_Id(labId, pageable).map(LabOrderMapper::toResponse);
+            if (patientId != null && !patientId.isBlank()) {
+                page = orderRepo.findByLaboratory_Id(labId, pageable);
+            } else if (status != null) {
+                page = orderRepo.findByStatusAndLaboratory_Id(status, labId, pageable);
+            } else {
+                page = orderRepo.findByLaboratory_Id(labId, pageable);
+            }
         }
-        if (status != null) {
-            return orderRepo.findByStatusAndLaboratory_Id(status, labId, pageable).map(LabOrderMapper::toResponse);
-        }
-        return orderRepo.findByLaboratory_Id(labId, pageable).map(LabOrderMapper::toResponse);
+        logger.debug("Encontradas {} órdenes", page.getTotalElements());
+        return page.map(LabOrderMapper::toResponse);
     }
 }
-

@@ -5,96 +5,78 @@ import com.nimbusds.jose.JWSVerifier;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jwt.SignedJWT;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.security.interfaces.RSAPublicKey;
 import java.time.Instant;
 import java.util.*;
 
-/**
- * Clase de utilidad para manejar la validación y el parseo de JSON Web Tokens (JWT).
- * Utiliza la biblioteca Nimbus JOSE+JWT para procesar los tokens.
- */
 public class JwtUtils {
     private final RSAPublicKey publicKey;
     private final String expectedIssuer;
+    private static final Logger logger = LoggerFactory.getLogger(JwtUtils.class);
 
-    /**
-     * Constructor para inicializar la utilidad con la clave pública y el emisor esperado.
-     *
-     * @param publicKey La clave pública RSA utilizada para verificar la firma del token.
-     * @param expectedIssuer El emisor (issuer) que se espera encontrar en los claims del token.
-     */
     public JwtUtils(RSAPublicKey publicKey, String expectedIssuer) {
         this.publicKey = publicKey;
         this.expectedIssuer = expectedIssuer;
     }
 
-    /**
-     * Valida y parsea un token JWT.
-     * Realiza una serie de verificaciones: tipo de token, firma, emisor y fecha de expiración.
-     * Si todas las validaciones son exitosas, extrae el payload y lo devuelve.
-     *
-     * @param token El string del token JWT a validar.
-     * @return Un {@link Optional} que contiene el {@link JwtPayload} si el token es válido, o un Optional vacío en caso contrario.
-     */
     public Optional<JwtPayload> validateAndParse(String token) {
         try {
-            // 1. Parsear el token.
+            logger.debug("Iniciando validación de token JWT.");
             SignedJWT jwt = SignedJWT.parse(token);
+            logger.debug("Token parseado correctamente.");
 
-            // 2. Verificar el tipo de cabecera (debe ser "JWT").
             var header = jwt.getHeader();
-            if (!Objects.equals(header.getType(), JOSEObjectType.JWT)) return Optional.empty();
+            if (!Objects.equals(header.getType(), JOSEObjectType.JWT)) {
+                logger.debug("Validación fallida: El tipo de cabecera no es JWT.");
+                return Optional.empty();
+            }
+            logger.debug("Tipo de cabecera verificado.");
 
-            // 3. Verificar la firma del token usando la clave pública.
             JWSVerifier verifier = new RSASSAVerifier(publicKey);
-            if (!jwt.verify(verifier)) return Optional.empty();
+            if (!jwt.verify(verifier)) {
+                logger.debug("Validación fallida: La firma del token es inválida.");
+                return Optional.empty();
+            }
+            logger.debug("Firma del token verificada.");
 
-            // 4. Obtener los claims (payload) del token.
             var claims = jwt.getJWTClaimsSet();
 
-            // 5. Verificar el emisor (issuer).
-            if (expectedIssuer != null && !expectedIssuer.equals(claims.getIssuer())) return Optional.empty();
+            if (expectedIssuer != null && !expectedIssuer.equals(claims.getIssuer())) {
+                logger.debug("Validación fallida: El emisor del token no coincide. Esperado: {}, Recibido: {}", expectedIssuer, claims.getIssuer());
+                return Optional.empty();
+            }
+            logger.debug("Emisor del token verificado.");
 
-            // 6. Verificar la fecha de expiración.
             var now = Instant.now();
-            if (claims.getExpirationTime() == null || now.isAfter(claims.getExpirationTime().toInstant())) return Optional.empty();
+            if (claims.getExpirationTime() == null || now.isAfter(claims.getExpirationTime().toInstant())) {
+                logger.debug("Validación fallida: El token ha expirado o no tiene fecha de expiración.");
+                return Optional.empty();
+            }
+            logger.debug("Fecha de expiración verificada.");
 
-            // 7. Extraer los datos del payload.
-            String subject = claims.getSubject(); // Generalmente el username
+            String subject = claims.getSubject();
             String userId  = Objects.toString(claims.getClaim("userId"), null);
             String labCode = Objects.toString(claims.getClaim("labCode"), null);
 
             @SuppressWarnings("unchecked")
             List<String> roles = (List<String>) claims.getClaim("roles");
             if (roles == null) roles = List.of();
+            
+            logger.debug("Payload extraído exitosamente para el usuario: {}", subject);
 
-            // 8. Devolver el payload si todo es correcto.
             return Optional.of(new JwtPayload(subject, userId, roles, labCode));
         } catch (Exception e) {
-            // Si ocurre cualquier excepción durante el proceso, el token se considera inválido.
+            logger.debug("Error durante la validación del token: {}", e.getMessage());
             return Optional.empty();
         }
     }
 
-    /**
-     * Método de utilidad estático para convertir una {@link RSAKey} de Nimbus a una {@link RSAPublicKey} de Java.
-     *
-     * @param rsaKey La clave RSA en formato Nimbus.
-     * @return La clave pública en formato estándar de Java.
-     * @throws RuntimeException si la conversión falla.
-     */
     public static RSAPublicKey toPublicKey(RSAKey rsaKey) {
         try { return rsaKey.toRSAPublicKey(); } catch (Exception e) { throw new RuntimeException(e); }
     }
 
-    /**
-     * Un record que representa el payload extraído de un token JWT válido.
-     *
-     * @param username El nombre de usuario (del claim "sub").
-     * @param userId El ID del usuario.
-     * @param roles La lista de roles del usuario.
-     * @param labCode El código de laboratorio asociado al usuario.
-     */
     public record JwtPayload(String username, String userId, List<String> roles, String labCode) {}
 }

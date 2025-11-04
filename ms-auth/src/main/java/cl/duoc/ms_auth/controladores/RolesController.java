@@ -2,6 +2,8 @@ package cl.duoc.ms_auth.controladores;
 
 import cl.duoc.ms_auth.dtos.RoleResponse;
 import cl.duoc.ms_auth.servicios.RoleService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,6 +18,7 @@ import java.util.List;
 public class RolesController {
 
     private final RoleService roleService;
+    private static final Logger logger = LoggerFactory.getLogger(RolesController.class);
 
     /**
      * Constructor para inyectar el servicio de roles.
@@ -31,6 +34,9 @@ public class RolesController {
      */
     @GetMapping
     public ResponseEntity<List<RoleResponse>> list() {
-        return ResponseEntity.ok(roleService.list());
+        logger.info("Solicitud recibida para listar todos los roles.");
+        List<RoleResponse> roles = roleService.list();
+        logger.debug("Se encontraron {} roles.", roles.size());
+        return ResponseEntity.ok(roles);
     }
 }

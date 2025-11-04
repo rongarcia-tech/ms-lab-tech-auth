@@ -16,6 +16,8 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -33,6 +35,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtAuthProperties props;
     private final ConfigurableJWTProcessor<SecurityContext> jwtProcessor;
+    private static final Logger logger = LoggerFactory.getLogger(JwtAuthFilter.class);
 
     public JwtAuthFilter(JwtAuthProperties props) {
         try {
@@ -83,6 +86,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             }
         } catch (Exception e) {
             // Token inválido → limpiamos contexto; el entry point responderá 401
+            logger.warn("Error al validar el token JWT desde {}: {}", req.getRemoteAddr(), e.getMessage());
             org.springframework.security.core.context.SecurityContextHolder.clearContext();
         }
 

@@ -2,6 +2,8 @@ package cl.duoc.ms_auth.controladores;
 
 import cl.duoc.ms_auth.security.KeyProvider;
 import com.nimbusds.jose.jwk.JWKSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/.well-known")
 public class JwksController {
     private final KeyProvider keyProvider;
+    private static final Logger logger = LoggerFactory.getLogger(JwksController.class);
 
     /**
      * Constructor que inyecta el proveedor de claves.
@@ -32,7 +35,9 @@ public class JwksController {
      */
     @GetMapping(value = "/jwks.json", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> jwks() {
+        logger.info("Solicitud recibida para obtener el JWKS.");
         var jwkSet = new JWKSet(keyProvider.publicJwk());
+        logger.debug("JWKS generado exitosamente.");
         return ResponseEntity.ok(jwkSet.toString(true));
     }
 }

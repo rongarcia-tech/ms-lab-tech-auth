@@ -7,6 +7,8 @@ import cl.duoc.ms_auth.exceptions.UnauthorizedException;
 import cl.duoc.ms_auth.repositorio.UserRepository;
 import cl.duoc.ms_auth.servicios.AuthService;
 import cl.duoc.ms_auth.servicios.TokenService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +24,7 @@ public class AuthServiceImpl implements AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final TokenService tokenService;
+    private static final Logger logger = LoggerFactory.getLogger(AuthServiceImpl.class);
 
     /**
      * Constructor para inyectar las dependencias necesarias.
@@ -49,34 +52,37 @@ public class AuthServiceImpl implements AuthService {
      */
     @Override
     public AuthLoginResponse login(AuthLoginRequest request) {
-        // 1. Buscar al usuario por su nombre de usuario.
+        logger.debug("Buscando usuario: {}", request.username());
         User u = userRepository.findByUsername(request.username())
-                .orElseThrow(() -> new UnauthorizedException("Credenciales inválidas"));
+                .orElseThrow(() -> {
+                    logger.warn("Intento de login fallido para el usuario: {}. Razón: Usuario no encontrado.", request.username());
+                    return new UnauthorizedException("Credenciales inválidas");
+                });
 
-        // 2. Verificar si el usuario está activo.
+        logger.debug("Verificando estado del usuario: {}", request.username());
         if (!"Y".equalsIgnoreCase(u.getActive())) {
+            logger.warn("Intento de login fallido para el usuario: {}. Razón: Usuario inactivo.", request.username());
             throw new UnauthorizedException("Usuario inactivo");
         }
 
-        // 3. Verificar si la contraseña proporcionada coincide con el hash almacenado.
+        logger.debug("Verificando contraseña para el usuario: {}", request.username());
         if (!passwordEncoder.matches(request.password(), u.getPasswordHash())) {
+            logger.warn("Intento de login fallido para el usuario: {}. Razón: Contraseña incorrecta.", request.username());
             throw new UnauthorizedException("Credenciales inválidas");
         }
 
-        // 4. Generar el token de acceso para el usuario.
+        logger.debug("Generando token para el usuario: {}", request.username());
         String token = tokenService.generateAccessToken(u);
 
-        // 5. Recopilar los nombres de los roles del usuario.
         var roles = u.getRoles().stream().map(r -> r.getName()).sorted().collect(Collectors.toList());
 
-        // 6. Construir y devolver la respuesta de inicio de sesión.
+        logger.info("Login exitoso para el usuario: {}", request.username());
         return new AuthLoginResponse(
                 token,
                 tokenService.getExpirationInstant(),
                 u.getExternalId().toString(),
                 u.getUsername(),
                 roles,
-                // Incluir el código de laboratorio solo si el usuario tiene el rol LAB_TECH.
                 roles.contains("LAB_TECH") ? u.getLabCode() : null
         );
     }
