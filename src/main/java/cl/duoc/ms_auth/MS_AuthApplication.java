@@ -9,6 +9,5 @@ public class MS_AuthApplication {
 	public static void main(String[] args) {
 		SpringApplication.run(MS_AuthApplication.class, args);
 	}
-
-
+    
 }

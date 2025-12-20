@@ -7,7 +7,12 @@ services:
     ports:
       - "8080:8080"
     environment:
+      - SPRING_DATASOURCE_URL=jdbc:oracle:thin:@//oracle-free:1521/freepdb1
+      - SPRING_DATASOURCE_USERNAME=system
+      - SPRING_DATASOURCE_PASSWORD=Administrator
       - SPRING_PROFILES_ACTIVE=docker
+      - LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_BOOT_CONTEXT_CONFIG=DEBUG
+      - LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_BOOT_CONTEXT_PROPERTIES=DEBUG
     networks:
       - ms-network
     restart: unless-stopped
