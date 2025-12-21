@@ -52,9 +52,10 @@ public class WebSecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/auth/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/.well-known/jwks.json").permitAll()
                         .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
+                        .requestMatchers("/users/me").authenticated()
                         .requestMatchers("/users/**").hasRole("ADMIN")
                         .requestMatchers("/roles/**").hasRole("ADMIN")
-                        .requestMatchers("/users/me").authenticated()
+
                         .anyRequest().authenticated();
                 })
                 .formLogin(AbstractHttpConfigurer::disable)

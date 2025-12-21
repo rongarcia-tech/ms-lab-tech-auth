@@ -53,7 +53,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public AuthLoginResponse login(AuthLoginRequest request) {
         logger.debug("Buscando usuario: {}", request.username());
-        User u = userRepository.findByUsername(request.username())
+        User u = userRepository.findByUsernameIgnoreCaseOrEmailIgnoreCase(request.username(), request.username())
                 .orElseThrow(() -> {
                     logger.warn("Intento de login fallido para el usuario: {}. Razón: Usuario no encontrado.", request.username());
                     return new UnauthorizedException("Credenciales inválidas");
