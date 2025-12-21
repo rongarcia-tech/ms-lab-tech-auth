@@ -23,6 +23,7 @@ WORKDIR /app
 # Copiar el JAR generado
 COPY --from=build /app/target/*.jar app.jar
 COPY wallet /app/wallet
+COPY keystore.p12 /app/keystore.p12
 
 # Puerto interno donde escucha ms-auth
 EXPOSE 8080
